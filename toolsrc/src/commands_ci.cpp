@@ -1,12 +1,12 @@
 #include "pch.h"
 #include "vcpkg_Commands.h"
 #include "vcpkglib.h"
-#include "vcpkg_Environment.h"
 #include "vcpkg_Files.h"
 #include "vcpkg_System.h"
 #include "vcpkg_Dependencies.h"
 #include "vcpkg_Input.h"
 #include "vcpkg_Chrono.h"
+#include "Paragraphs.h"
 
 namespace vcpkg::Commands::CI
 {
@@ -14,18 +14,13 @@ namespace vcpkg::Commands::CI
     using Dependencies::install_plan_type;
     using Build::BuildResult;
 
-    static std::vector<package_spec> load_all_package_specs(const fs::path& directory, const triplet& target_triplet)
+    static std::vector<package_spec> load_all_package_specs(const fs::path& ports_directory, const triplet& target_triplet)
     {
-        std::vector<fs::path> port_folders;
-        Files::non_recursive_find_matching_paths_in_dir(directory, [](const fs::path& current)
-                                                        {
-                                                            return fs::is_directory(current);
-                                                        }, &port_folders);
-
+        std::vector<SourceParagraph> ports = Paragraphs::load_all_ports(ports_directory);
         std::vector<package_spec> specs;
-        for (const fs::path& p : port_folders)
+        for (const SourceParagraph& p : ports)
         {
-            specs.push_back(package_spec::from_name_and_triplet(p.filename().generic_string(), target_triplet).get_or_throw());
+            specs.push_back(package_spec::from_name_and_triplet(p.name, target_triplet).get_or_throw());
         }
 
         return specs;
@@ -44,41 +39,46 @@ namespace vcpkg::Commands::CI
         const std::vector<package_spec_with_install_plan> install_plan = Dependencies::create_install_plan(paths, specs, status_db);
         Checks::check_exit(!install_plan.empty(), "Install plan cannot be empty");
 
-        Environment::ensure_utilities_on_path(paths);
-
         std::vector<BuildResult> results;
+        std::vector<std::chrono::milliseconds::rep> timing;
         const ElapsedTime timer = ElapsedTime::createStarted();
         size_t counter = 0;
         const size_t package_count = install_plan.size();
         for (const package_spec_with_install_plan& action : install_plan)
         {
+            const ElapsedTime build_timer = ElapsedTime::createStarted();
             counter++;
-            System::println("Starting package %d/%d: %s. Time Elapsed: %s", counter, package_count, action.spec.toString(), timer.toString());
+            System::println("Starting package %d/%d: %s", counter, package_count, action.spec.toString());
+
+            timing.push_back(-1);
+            results.push_back(BuildResult::NULLVALUE);
+
             try
             {
                 if (action.plan.plan_type == install_plan_type::ALREADY_INSTALLED)
                 {
-                    results.push_back(BuildResult::SUCCEEDED);
+                    results.back() = BuildResult::SUCCEEDED;
                     System::println(System::color::success, "Package %s is already installed", action.spec);
                 }
                 else if (action.plan.plan_type == install_plan_type::BUILD_AND_INSTALL)
                 {
                     const BuildResult result = Commands::Build::build_package(*action.plan.source_pgh, action.spec, paths, paths.port_dir(action.spec), status_db);
-                    results.push_back(result);
+                    timing.back() = build_timer.elapsed<std::chrono::milliseconds>().count();
+                    results.back() = result;
                     if (result != BuildResult::SUCCEEDED)
                     {
                         System::println(System::color::error, Build::create_error_message(result, action.spec));
                         continue;
                     }
-                    const BinaryParagraph bpgh = try_load_cached_package(paths, action.spec).get_or_throw();
+                    const BinaryParagraph bpgh = Paragraphs::try_load_cached_package(paths, action.spec).get_or_throw();
                     Install::install_package(paths, bpgh, &status_db);
                     System::println(System::color::success, "Package %s is installed", action.spec);
                 }
                 else if (action.plan.plan_type == install_plan_type::INSTALL)
                 {
-                    results.push_back(BuildResult::SUCCEEDED);
+                    results.back() = BuildResult::SUCCEEDED;
                     Install::install_package(paths, *action.plan.binary_pgh, &status_db);
-                    System::println(System::color::success, "Package %s is installed", action.spec);
+                    System::println(System::color::success, "Package %s is installed from cache", action.spec);
                 }
                 else
                     Checks::unreachable();
@@ -86,20 +86,16 @@ namespace vcpkg::Commands::CI
             catch (const std::exception& e)
             {
                 System::println(System::color::error, "Error: Could not install package %s: %s", action.spec, e.what());
-                exit(EXIT_FAILURE);
+                results.back() = BuildResult::NULLVALUE;
             }
+            System::println("Elapsed time for package %s: %s", action.spec, build_timer.toString());
         }
 
-        System::println(timer.toString());
+        System::println("Total time taken: %s", timer.toString());
 
         for (size_t i = 0; i < results.size(); i++)
         {
-            if (results[i] == BuildResult::SUCCEEDED)
-            {
-                continue;
-            }
-
-            System::println("%s: %s", install_plan[i].spec.toString(), Build::to_string(results[i]));
+            System::println("%s: %s: %dms", install_plan[i].spec.toString(), Build::to_string(results[i]), timing[i]);
         }
 
         std::map<BuildResult, int> summary;

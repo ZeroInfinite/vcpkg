@@ -1,12 +1,12 @@
 #include "pch.h"
 #include "vcpkg_Commands.h"
 #include "vcpkglib.h"
-#include "vcpkg_Environment.h"
 #include "metrics.h"
 #include "vcpkg_Files.h"
 #include "vcpkg_System.h"
 #include "vcpkg_Dependencies.h"
 #include "vcpkg_Input.h"
+#include "Paragraphs.h"
 
 namespace vcpkg::Commands::Install
 {
@@ -157,7 +157,7 @@ namespace vcpkg::Commands::Install
                             triplet_install_path.generic_string(),
                             binary_paragraph.spec);
             System::print("\n    ");
-            System::println(Strings::Joiner::on("\n    ").join(intersection));
+            System::println(Strings::join("\n    ", intersection));
             System::println("");
             exit(EXIT_FAILURE);
         }
@@ -202,7 +202,6 @@ namespace vcpkg::Commands::Install
             specs_string.append(install_plan[i].spec.toString());
         }
         TrackProperty("installplan", specs_string);
-        Environment::ensure_utilities_on_path(paths);
 
         for (const package_spec_with_install_plan& action : install_plan)
         {
@@ -224,7 +223,7 @@ namespace vcpkg::Commands::Install
                         System::println(Build::create_user_troubleshooting_message(action.spec));
                         exit(EXIT_FAILURE);
                     }
-                    const BinaryParagraph bpgh = try_load_cached_package(paths, action.spec).get_or_throw();
+                    const BinaryParagraph bpgh = Paragraphs::try_load_cached_package(paths, action.spec).get_or_throw();
                     install_package(paths, bpgh, &status_db);
                     System::println(System::color::success, "Package %s is installed", action.spec);
                 }

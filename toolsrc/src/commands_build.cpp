@@ -6,9 +6,11 @@
 #include "PostBuildLint.h"
 #include "vcpkg_Dependencies.h"
 #include "vcpkg_System.h"
+#include "vcpkg_Chrono.h"
 #include "vcpkg_Environment.h"
 #include "metrics.h"
 #include "vcpkg_Enums.h"
+#include "Paragraphs.h"
 
 namespace vcpkg::Commands::Build
 {
@@ -37,22 +39,30 @@ namespace vcpkg::Commands::Build
             }
         }
 
+        const fs::path& cmake_exe_path = paths.get_cmake_exe();
+        const fs::path& git_exe_path = paths.get_git_exe();
+
         const fs::path ports_cmake_script_path = paths.ports_cmake;
         const Environment::vcvarsall_and_platform_toolset vcvarsall_bat = Environment::get_vcvarsall_bat(paths);
-        const std::wstring command = Strings::wformat(LR"("%s" %s >nul 2>&1 && cmake -DCMD=BUILD -DPORT=%s -DTARGET_TRIPLET=%s -DVCPKG_PLATFORM_TOOLSET=%s "-DCURRENT_PORT_DIR=%s/." -P "%s")",
-                                                      vcvarsall_bat.path.native(),
-                                                      Strings::utf8_to_utf16(target_triplet.architecture()),
-                                                      Strings::utf8_to_utf16(source_paragraph.name),
-                                                      Strings::utf8_to_utf16(target_triplet.canonical_name()),
-                                                      vcvarsall_bat.platform_toolset,
-                                                      port_dir.generic_wstring(),
-                                                      ports_cmake_script_path.generic_wstring());
+        const std::wstring cmd_set_environment = Strings::wformat(LR"("%s" %s >nul 2>&1)", vcvarsall_bat.path.native(), Strings::utf8_to_utf16(target_triplet.architecture()));
 
-        System::Stopwatch2 timer;
-        timer.start();
-        int return_code = System::cmd_execute(command);
-        timer.stop();
-        TrackMetric("buildtimeus-" + spec.toString(), timer.microseconds());
+        const std::wstring cmd_launch_cmake = make_cmake_cmd(cmake_exe_path, ports_cmake_script_path,
+                                                             {
+                                                                 { L"CMD", L"BUILD" },
+                                                                 { L"PORT", source_paragraph.name },
+                                                                 { L"CURRENT_PORT_DIR", port_dir / "/." },
+                                                                 { L"TARGET_TRIPLET", target_triplet.canonical_name() },
+                                                                 { L"VCPKG_PLATFORM_TOOLSET", vcvarsall_bat.platform_toolset },
+                                                                 { L"GIT", git_exe_path }
+                                                             });
+
+        const std::wstring command = Strings::wformat(LR"(%s && %s)", cmd_set_environment, cmd_launch_cmake);
+
+        const ElapsedTime timer = ElapsedTime::createStarted();
+
+        int return_code = System::cmd_execute_clean(command);
+        auto buildtimeus = timer.microseconds();
+        TrackMetric("buildtimeus-" + spec.toString(), buildtimeus);
 
         if (return_code != 0)
         {
@@ -102,7 +112,7 @@ namespace vcpkg::Commands::Build
 
     std::string create_user_troubleshooting_message(const package_spec& spec)
     {
-        return Strings::format("Please ensure sure you're using the latest portfiles with `vcpkg update`, then\n"
+        return Strings::format("Please ensure sure you're using the latest portfiles with `.\\vcpkg update`, then\n"
                                "submit an issue at https://github.com/Microsoft/vcpkg/issues including:\n"
                                "  Package: %s\n"
                                "  Vcpkg version: %s\n"
@@ -123,11 +133,10 @@ namespace vcpkg::Commands::Build
             exit(EXIT_SUCCESS);
         }
 
-        const expected<SourceParagraph> maybe_spgh = try_load_port(port_dir);
+        const expected<SourceParagraph> maybe_spgh = Paragraphs::try_load_port(port_dir);
         Checks::check_exit(!maybe_spgh.error_code(), "Could not find package named %s: %s", spec, maybe_spgh.error_code().message());
         const SourceParagraph& spgh = *maybe_spgh.get();
 
-        Environment::ensure_utilities_on_path(paths);
         StatusParagraphs status_db = database_load_check(paths);
         const BuildResult result = build_package(spgh, spec, paths, paths.port_dir(spec), status_db);
         if (result == BuildResult::CASCADED_DUE_TO_MISSING_DEPENDENCIES)

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "package_spec.h"
-#include "BinaryParagraph.h"
 #include "StatusParagraphs.h"
 #include "vcpkg_paths.h"
 #include "ImmutableSortedVector.h"
@@ -20,7 +18,17 @@ namespace vcpkg
 
     std::vector<StatusParagraph_and_associated_files> get_installed_files(const vcpkg_paths& paths, const StatusParagraphs& status_db);
 
-    expected<SourceParagraph> try_load_port(const fs::path& control_path);
 
-    expected<BinaryParagraph> try_load_cached_package(const vcpkg_paths& paths, const package_spec& spec);
+    struct CMakeVariable
+    {
+        CMakeVariable(const std::wstring& varname, const wchar_t* varvalue);
+        CMakeVariable(const std::wstring& varname, const std::string& varvalue);
+        CMakeVariable(const std::wstring& varname, const std::wstring& varvalue);
+        CMakeVariable(const std::wstring& varname, const fs::path& path);
+
+        std::wstring s;
+    };
+
+    std::wstring make_cmake_cmd(const fs::path& cmake_exe, const fs::path& cmake_script, const std::vector<CMakeVariable>& pass_variables);
+
 } // namespace vcpkg

@@ -1,3 +1,67 @@
+vcpkg (0.0.76)
+--------------
+  * Add ports:
+    - ffmpeg               3.2.4-2
+    - fftw3                3.3.6-p11
+    - flatbuffers          1.6.0
+    - netcdf-c             4.4.1.1-1
+    - netcdf-cxx4          4.3.0
+    - portaudio            19.0.6.00
+    - vtk                  7.1.0
+  * Update ports:
+    - azure-storage-cpp    2.6.0            -> 3.0.0
+    - boost                1.63             -> 1.63-2
+    - bullet3              2.83.7.98d4780   -> 2.86.1
+    - catch                1.5.7            -> 1.8.1
+    - cppwinrt             1.010.0.14393.0  -> feb2017_refresh-14393
+    - hdf5                 1.8.18           -> 1.10.0-patch1-1
+    - libflac              1.3.2            -> 1.3.2-1
+    - libpng               1.6.24-1         -> 1.6.28
+    - lua                  5.3.3-2          -> 5.3.4
+    - msmpi                8.0              -> 8.0-1
+    - openjpeg             2.1.2            -> 2.1.2-1
+    - poco                 1.7.6-3          -> 1.7.6-4
+    - szip                 2.1              -> 2.1-1
+    - zeromq               4.2.0            -> 4.2.2
+  * `vcpkg` now launches external commands (most notably builds) in a sanitized environment
+  * Better proxy handling when fetching dependencies (cmake/git/nuget)
+  * Fix more VS2017 issues
+  * Fixes and improvements in existing portfiles and the `vcpkg` tool itself
+
+-- vcpkg team <vcpkg@microsoft.com>  MON, 10 Mar 2017 17:45:00 -0800
+
+
+vcpkg (0.0.75)
+--------------
+  * Add ports:
+    - dlib                 19.2
+    - gtk                  3.22.8
+    - pqp                  1.3
+    - pugixml              1.8.1
+  * Update ports:
+    - clockutils           1.1.1            -> 1.1.1-3651f232c27074c4ceead169e223edf5f00247c5
+    - grpc                 1.1.0-dev-1674f65-2 -> 1.1.2-1
+    - libflac              1.3.1-1          -> 1.3.2
+    - liblzma              5.2.2            -> 5.2.3
+    - libmysql             5.7.17           -> 5.7.17-1
+    - lz4                  1.7.4.2          -> 1.7.5
+    - mongo-cxx-driver     3.0.3            -> 3.0.3-1
+    - nana                 1.4.1            -> 1.4.1-66be23c9204c5567d1c51e6f57ba23bffa517a7c
+    - opengl               10.0.10240.0     -> 0.0-3
+    - protobuf             3.0.2            -> 3.2.0
+    - qt5                  5.7.1-2          -> 5.7.1-5
+    - spdlog               0.11.0           -> 0.12.0
+  * Numerous improvements in Visual Studio, MSBuild and Windows SDK auto-detection
+  * `vcpkg integrate install` now outputs the specific toolchain file to use for CMake integration
+  * All commands now checks for `--options` and will issue an error on unknown options.
+    - Previously only commands with options would do this (for example `vcpkg remove --purge <pkg>`) and commands with no options would ignore them, for example `vcpkg install --purge <pkg>`
+  * Update version of the automatically acquired JOM, python
+    - Also, for python: automatically acquire the 32-bit versions instead of the 64-bit ones
+  * Fixes and improvements in existing portfiles and the `vcpkg` tool itself
+
+-- vcpkg team <vcpkg@microsoft.com>  MON, 27 Feb 2017 14:00:00 -0800
+
+
 vcpkg (0.0.74)
 --------------
   * Bump required version & auto-downloaded version of `cmake` to 3.8.0 (was 3.7.x). This fixes UWP builds with Visual Studio 2017

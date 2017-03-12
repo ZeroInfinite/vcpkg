@@ -166,20 +166,17 @@ namespace vcpkg::Commands::Integrate
         fs::create_directory(tmp_dir);
 
         bool should_install_system = true;
-        if (fs::exists(system_wide_targets_file))
+        const expected<std::string> system_wide_file_contents = Files::read_contents(system_wide_targets_file);
+        if (auto contents_data = system_wide_file_contents.get())
         {
-            auto system_wide_file_contents = Files::read_contents(system_wide_targets_file);
-            if (auto contents_data = system_wide_file_contents.get())
+            std::regex re(R"###(<!-- version (\d+) -->)###");
+            std::match_results<std::string::const_iterator> match;
+            auto found = std::regex_search(*contents_data, match, re);
+            if (found)
             {
-                std::regex re(R"###(<!-- version (\d+) -->)###");
-                std::match_results<std::string::const_iterator> match;
-                auto found = std::regex_search(*contents_data, match, re);
-                if (found)
-                {
-                    int ver = atoi(match[1].str().c_str());
-                    if (ver >= 1)
-                        should_install_system = false;
-                }
+                int ver = atoi(match[1].str().c_str());
+                if (ver >= 1)
+                    should_install_system = false;
             }
         }
 
@@ -216,38 +213,43 @@ namespace vcpkg::Commands::Integrate
         System::println(System::color::success, "Applied user-wide integration for this vcpkg root.");
         const fs::path cmake_toolchain = paths.buildsystems / "vcpkg.cmake";
         System::println("\n"
-            "All MSBuild C++ projects can now #include any installed libraries.\n"
-            "Linking will be handled automatically.\n"
-            "Installing new libraries will make them instantly available.\n"
-            "\n"
-            "CMake projects should use -DCMAKE_TOOLCHAIN_FILE=%s", cmake_toolchain.generic_string());
+                        "All MSBuild C++ projects can now #include any installed libraries.\n"
+                        "Linking will be handled automatically.\n"
+                        "Installing new libraries will make them instantly available.\n"
+                        "\n"
+                        "CMake projects should use -DCMAKE_TOOLCHAIN_FILE=%s", cmake_toolchain.generic_string());
 
         exit(EXIT_SUCCESS);
     }
 
     static void integrate_remove()
     {
-        auto path = get_appdata_targets_path();
-        if (!fs::exists(path))
+        const fs::path path = get_appdata_targets_path();
+
+        std::error_code ec;
+        bool was_deleted = fs::remove(path, ec);
+
+        if (ec)
         {
-            System::println(System::color::success, "User-wide integration is not installed");
-            exit(EXIT_SUCCESS);
+            System::println(System::color::error, "Error: Unable to remove user-wide integration: %d", ec.message());
+            exit(EXIT_FAILURE);
         }
 
-        const std::wstring cmd_line = Strings::wformat(LR"(DEL "%s")", get_appdata_targets_path().native());
-        const int exit_code = System::cmd_execute(cmd_line);
-        if (exit_code)
+        if (was_deleted)
         {
-            System::println(System::color::error, "Error: Unable to remove user-wide integration: %d", exit_code);
-            exit(exit_code);
+            System::println(System::color::success, "User-wide integration was removed");
         }
-        System::println(System::color::success, "User-wide integration was removed");
+        else
+        {
+            System::println(System::color::success, "User-wide integration is not installed");
+        }
+
         exit(EXIT_SUCCESS);
     }
 
     static void integrate_project(const vcpkg_paths& paths)
     {
-        Environment::ensure_nuget_on_path(paths);
+        const fs::path& nuget_exe = paths.get_nuget_exe();
 
         const fs::path& buildsystems_dir = paths.buildsystems;
         const fs::path tmp_dir = buildsystems_dir / "tmp";
@@ -265,17 +267,12 @@ namespace vcpkg::Commands::Integrate
         std::ofstream(nuspec_file_path) << create_nuspec_file(paths.root, nuget_id, nupkg_version);
 
         // Using all forward slashes for the command line
-        const std::wstring cmd_line = Strings::wformat(LR"(nuget.exe pack -OutputDirectory "%s" "%s" > nul)", buildsystems_dir.native(), nuspec_file_path.native());
+        const std::wstring cmd_line = Strings::wformat(LR"("%s" pack -OutputDirectory "%s" "%s" > nul)", nuget_exe.native(), buildsystems_dir.native(), nuspec_file_path.native());
 
-        const int exit_code = System::cmd_execute(cmd_line);
+        const int exit_code = System::cmd_execute_clean(cmd_line);
 
         const fs::path nuget_package = buildsystems_dir / Strings::format("%s.%s.nupkg", nuget_id, nupkg_version);
-        if (exit_code != 0 || !fs::exists(nuget_package))
-        {
-            System::println(System::color::error, "Error: NuGet package creation failed");
-            exit(EXIT_FAILURE);
-        }
-
+        Checks::check_exit(exit_code == 0 && fs::exists(nuget_package), "Error: NuGet package creation failed");
         System::println(System::color::success, "Created nupkg: %s", nuget_package.string());
 
         System::println(R"(

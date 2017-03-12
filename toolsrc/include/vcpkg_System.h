@@ -1,11 +1,14 @@
 #pragma once
 
+#include <Windows.h>
 #include "vcpkg_Strings.h"
 #include "filesystem_fs.h"
 #include "vcpkg_optional.h"
 
 namespace vcpkg::System
 {
+    optional<std::wstring> get_registry_string(HKEY base, const wchar_t* subkey, const wchar_t* valuename);
+
     fs::path get_exe_path_of_current_process();
 
     struct exit_code_and_output
@@ -13,6 +16,13 @@ namespace vcpkg::System
         int exit_code;
         std::string output;
     };
+
+    int cmd_execute_clean(const wchar_t* cmd_line);
+
+    inline int cmd_execute_clean(const std::wstring& cmd_line)
+    {
+        return cmd_execute_clean(cmd_line.c_str());
+    }
 
     int cmd_execute(const wchar_t* cmd_line);
 
@@ -27,6 +37,10 @@ namespace vcpkg::System
     {
         return cmd_execute_and_capture_output(cmd_line.c_str());
     }
+
+    std::wstring create_powershell_script_cmd(const fs::path& script_path);
+
+    std::wstring create_powershell_script_cmd(const fs::path& script_path, const std::wstring& args);
 
     enum class color
     {
@@ -83,15 +97,6 @@ namespace vcpkg::System
     {
         return println(c, Strings::format(messageTemplate, messageArgs...).c_str());
     }
-
-    struct Stopwatch2
-    {
-        int64_t start_time, end_time, freq;
-
-        void start();
-        void stop();
-        double microseconds() const;
-    };
 
     optional<std::wstring> get_environmental_variable(const wchar_t* varname) noexcept;
 

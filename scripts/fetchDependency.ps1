@@ -9,7 +9,7 @@ $downloadPromptOverride_NO_OVERRIDE= 0
 $downloadPromptOverride_DO_NOT_PROMPT = 1
 $downloadPromptOverride_ALWAYS_PROMPT = 2
 
-Import-Module BitsTransfer
+Import-Module BitsTransfer -Verbose:$false
 
 $scriptsDir = split-path -parent $MyInvocation.MyCommand.Definition
 $vcpkgRootDir = & $scriptsDir\findFileRecursivelyUp.ps1 $scriptsDir .vcpkg-root
@@ -81,6 +81,14 @@ function SelectProgram([Parameter(Mandatory=$true)][string]$Dependency)
         if ($Dependency -ne "git") # git fails with BITS
         {
             try {
+                $WC = New-Object System.Net.WebClient
+                $ProxyAuth = !$WC.Proxy.IsBypassed($url)
+                If($ProxyAuth){
+                    $ProxyCred = Get-Credential -Message "Enter credentials for Proxy Authentication"
+                    $PSDefaultParameterValues.Add("Start-BitsTransfer:ProxyAuthentication","Basic")
+                    $PSDefaultParameterValues.Add("Start-BitsTransfer:ProxyCredential",$ProxyCred)
+                }
+
                 Start-BitsTransfer -Source $url -Destination $downloadPath -ErrorAction Stop
             }
             catch [System.Exception] {
@@ -224,7 +232,7 @@ function SelectProgram([Parameter(Mandatory=$true)][string]$Dependency)
         throw [System.IO.FileNotFoundException] ("Could not detect or download " + $Dependency)
     }
 
-    return $downloadPath
+    return $executableFromDownload
 }
 
 SelectProgram $Dependency
